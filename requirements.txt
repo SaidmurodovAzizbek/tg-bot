@@ -4,8 +4,8 @@
 # ── Instagram API (No Login) ──────────────────────────────────────────
 apify-client>=1.8.0
 
-# ── Google Generative AI (Gemini) ──────────────────────────────────────
-google-generativeai==0.8.5
+# ── OpenRouter API (OpenAI orqali ishlaydi) ────────────────────────────
+openai>=1.10.0
 
 # ── Environment & CLI ──────────────────────────────────────────────────
 python-dotenv==1.1.0

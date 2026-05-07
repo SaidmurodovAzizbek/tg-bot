@@ -26,10 +26,10 @@ load_dotenv(dotenv_path=_env_path)
 @dataclass(frozen=True)
 class Config:
     apify_api_token: str
-    gemini_api_key: str
+    openrouter_api_key: str
     telegram_bot_token: str
     max_comments: int
-    gemini_model: str
+    openrouter_model: str
 
 
 def _require_env(name: str) -> str:
@@ -66,10 +66,10 @@ def load_config() -> Config:
     """
     config = Config(
         apify_api_token=_require_env("APIFY_API_TOKEN"),
-        gemini_api_key=_require_env("GEMINI_API_KEY"),
+        openrouter_api_key=_require_env("OPENROUTER_API_KEY"),
         telegram_bot_token=_require_env("TELEGRAM_BOT_TOKEN"),
         max_comments=int(getenv("MAX_COMMENTS", "50")),
-        gemini_model=getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+        openrouter_model=getenv("OPENROUTER_MODEL", "google/gemma-4-31b-it:free"),
     )
 
     logger.info("Konfiguratsiya muvaffaqiyatli yuklandi.")
@@ -87,8 +87,8 @@ def display_config(config: Config) -> None:
     table.add_column("Qiymat", style="green")
 
     table.add_row("Apify API Token", "•" * 12 + config.apify_api_token[-4:] if config.apify_api_token else "Kiritilmagan")
-    table.add_row("Gemini API Key", config.gemini_api_key[:10] + "••••••••")
-    table.add_row("Gemini Model", config.gemini_model)
+    table.add_row("OpenRouter API", config.openrouter_api_key[:10] + "••••••••")
+    table.add_row("OpenRouter Model", config.openrouter_model)
     table.add_row("Telegram Bot", config.telegram_bot_token[:10] + "••••••••")
     table.add_row("Max Comments", str(config.max_comments))
 

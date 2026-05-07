@@ -1,292 +1,224 @@
 """
-Instagram Comment Analyzer — AI Tahlilchi (Analyzer).
+AI Analyzer moduli (OpenRouter API orqali).
 
-Bu modul Google Gemini AI yordamida kommentariyalarni
-tahlil qilish funksionalligini ta'minlaydi. Kommentariyalarni
-kategoriyalarga ajratadi va sentiment tahlilini bajaradi.
+Ushbu modul yig'ilgan kommentariyalarni OpenRouter API
+(masalan: Llama 3) yordamida tahlil qilib, ularni kategoriyalarga ajratadi.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
+from typing import Dict, List, Any
 
-import google.generativeai as genai
-
+from openai import OpenAI, RateLimitError
 from config import Config
 from core.scraper import ScrapeResult
 
 logger = logging.getLogger(__name__)
 
-
-# ── Data Classes ──────────────────────────────────────────────────────
-
-@dataclass
-class CategoryBreakdown:
-    """Kommentariya kategoriyalari taqsimoti."""
-
-    praise: list[dict] = field(default_factory=list)       # 📣 Maqtov
-    criticism: list[dict] = field(default_factory=list)     # 😡 Tanqid
-    question: list[dict] = field(default_factory=list)      # ❓ Savol
-    suggestion: list[dict] = field(default_factory=list)    # 💡 Taklif
-    spam: list[dict] = field(default_factory=list)          # 🗑️ Spam
-    neutral: list[dict] = field(default_factory=list)       # 😐 Neytral
-    emoji_only: list[dict] = field(default_factory=list)    # 😀 Faqat emoji
-
+# ── Ma'lumotlar modellari (Data Models) ────────────────────────────────
 
 @dataclass
-class SentimentScore:
-    """Sentiment (kayfiyat) ko'rsatkichlari."""
-
-    positive: float = 0.0   # Ijobiy foiz (0-100)
-    negative: float = 0.0   # Salbiy foiz (0-100)
-    neutral: float = 0.0    # Neytral foiz (0-100)
-
+class CategoryData:
+    """Bitta kategoriya ostidagi kommentariyalar to'plami."""
+    count: int = 0
+    comments: List[str] = field(default_factory=list)
 
 @dataclass
 class AnalysisResult:
-    """To'liq tahlil natijasi."""
-
+    """AI Tahlil natijasini saqlovchi obyekt."""
+    summary_uz: str
+    positive_percent: int
+    negative_percent: int
+    neutral_percent: int
+    categories: Dict[str, CategoryData]
     post_url: str
-    total_comments: int
-    sentiment: SentimentScore = field(default_factory=SentimentScore)
-    categories: CategoryBreakdown = field(default_factory=CategoryBreakdown)
-    top_topics: list[str] = field(default_factory=list)
-    summary: str = ""
+    total_analyzed: int
 
 
-# ── Gemini AI Prompt ──────────────────────────────────────────────────
+# ── Kategoriyalar ro'yxati ─────────────────────────────────────────────
 
-_SYSTEM_INSTRUCTION = """Sen Instagram kommentariyalarini tahlil qiluvchi AI yordamchisisanga. 
-Senga Instagram postidagi kommentariyalar ro'yxati beriladi. 
-Sening vazifang ularni chuqur tahlil qilish.
-
-MUHIM QOIDALAR:
-1. Javobni FAQAT JSON formatda ber
-2. Har bir kommentariyani tegishli kategoriyaga joylashtir
-3. Sentiment foizlarining yig'indisi 100 bo'lishi kerak
-4. Xulosa o'zbek tilida bo'lsin
-5. Top mavzularni aniqlashda umumiy tendentsiyalarni ko'r"""
-
-_ANALYSIS_PROMPT_TEMPLATE = """Quyidagi {count} ta Instagram kommentariyasini tahlil qil:
-
---- KOMMENTARIYALAR ---
-{comments_text}
---- KOMMENTARIYALAR TUGADI ---
-
-Quyidagi JSON formatda javob ber (FAQAT JSON, boshqa hech narsa yo'q):
-{{
-  "sentiment": {{
-    "positive": <ijobiy_foiz_0_100>,
-    "negative": <salbiy_foiz_0_100>,
-    "neutral": <neytral_foiz_0_100>
-  }},
-  "categories": {{
-    "praise": [
-      {{"username": "...", "text": "...", "reason": "..."}}
-    ],
-    "criticism": [
-      {{"username": "...", "text": "...", "reason": "..."}}
-    ],
-    "question": [
-      {{"username": "...", "text": "...", "reason": "..."}}
-    ],
-    "suggestion": [
-      {{"username": "...", "text": "...", "reason": "..."}}
-    ],
-    "spam": [
-      {{"username": "...", "text": "...", "reason": "..."}}
-    ],
-    "neutral": [
-      {{"username": "...", "text": "...", "reason": "..."}}
-    ],
-    "emoji_only": [
-      {{"username": "...", "text": "...", "reason": "..."}}
-    ]
-  }},
-  "top_topics": ["mavzu1", "mavzu2", "mavzu3", "mavzu4", "mavzu5"],
-  "summary": "O'zbek tilida 3-5 jumlalik umumiy xulosa..."
-}}
-
-ESLATMA: 
-- Har bir kommentariya faqat BITTA kategoriyaga tegishli bo'lsin
-- "reason" — nima uchun shu kategoriyaga joylashtirilganini qisqacha tushuntir
-- Agar kommentariya faqat emoji (❤️, 🔥, 👍 va h.k.) bo'lsa, "emoji_only" ga joylashtir
-- Sentiment foizlari yig'indisi aynan 100 bo'lishi shart"""
+CATEGORIES = [
+    "Praise",     # Maqtov, ijobiy fikrlar
+    "Criticism",  # Tanqid, salbiy fikrlar
+    "Question",   # Savollar
+    "Suggestion", # Taklif yoki maslahatlar
+    "Spam",       # Reklama, botlar, ssilka
+    "Neutral",    # Neytral, oddiy belgilashlar (masalan: ok, +)
+    "Emojis"      # Faqat smayliklardan iborat
+]
 
 
-# ── Analyzer funksiyalari ─────────────────────────────────────────────
+# ── Prompt Shablon ─────────────────────────────────────────────────────
 
-def _format_comments_for_prompt(scrape_result: ScrapeResult) -> str:
-    """Kommentariyalarni prompt uchun matnli formatga o'tkazadi."""
-    lines = []
-    for i, comment in enumerate(scrape_result.comments, 1):
-        lines.append(f"{i}. @{comment.username}: {comment.text}")
-    return "\n".join(lines)
+_SYSTEM_PROMPT = """
+Siz Instagram izohlari (comments) ni o'zbek tilida tahlil qiluvchi va kategoriyalarga ajratuvchi professional sun'iy intellektsiz.
+Sizga foydalanuvchilar tomonidan yozilgan bir qancha izohlar beriladi.
+
+Sizning vazifangiz:
+1. Umumiy izohlarning kayfiyatini (sentiment) tahlil qilib, 1-2 gap bilan O'ZBEK tilida qisqacha xulosa (summary_uz) yozish.
+2. Ijobiy (positive_percent), salbiy (negative_percent) va neytral (neutral_percent) izohlarning umumiy foizini hisoblash (uchalasining yig'indisi doim 100 bo'lishi shart).
+3. HAR BIR izohni quyidagi 7 ta kategoriyadan ENG MOS bittasiga joylashtirish:
+   - "Praise" (Maqtov, duo, minnatdorchilik)
+   - "Criticism" (Tanqid, yomon ko'rish, shikoyat)
+   - "Question" (Savol, narxini yoki manzilni so'rash)
+   - "Suggestion" (Taklif, shunday qilsa yaxshi bo'lardi kabi)
+   - "Spam" (Reklama, obuna bo'ling, botlar yozgan so'zlar)
+   - "Neutral" (Oddiy so'zlar, masalan: "ha", "yo'q", "ok", "+")
+   - "Emojis" (Faqatgina emojilardan iborat bo'lgan izohlar)
+
+DIQQAT: Natijani FAKATGINA quyidagi toza JSON formatida qaytaring! Hech qanday boshqa matn yoki tushuntirish yozmang.
+
+JSON format nusxasi:
+{
+  "summary_uz": "Umumiy xulosa bu yerga...",
+  "positive_percent": 0,
+  "negative_percent": 0,
+  "neutral_percent": 0,
+  "categories": {
+    "Praise": ["izoh1", "izoh2"],
+    "Criticism": [],
+    "Question": [],
+    "Suggestion": [],
+    "Spam": [],
+    "Neutral": [],
+    "Emojis": []
+  }
+}
+"""
 
 
-def _parse_ai_response(raw_text: str) -> dict:
-    """
-    Gemini AI javobini JSON dict ga o'tkazadi.
-
-    Args:
-        raw_text: AI dan kelgan xom javob matni.
-
-    Returns:
-        dict: Parse qilingan JSON ma'lumot.
-
-    Raises:
-        ValueError: JSON parse qilishda xato bo'lganda.
-    """
-    # ── JSON blokni topish (```json ... ``` yoki oddiy JSON) ──────
-    text = raw_text.strip()
-
-    # Markdown code block ichidan olish
-    if "```json" in text:
-        text = text.split("```json", 1)[1]
-        text = text.split("```", 1)[0]
-    elif "```" in text:
-        text = text.split("```", 1)[1]
-        text = text.split("```", 1)[0]
-
-    text = text.strip()
-
+def _extract_json_from_text(text: str) -> dict:
+    """LLM javobidan JSON qismini xavfsiz ajratib oladi."""
     try:
+        # Eng oddiy holat: matn o'zi toza JSON bo'lsa
         return json.loads(text)
-    except json.JSONDecodeError as e:
-        logger.error("AI javobini parse qilishda xato: %s", e)
-        logger.debug("Xom javob: %s", raw_text[:500])
-        raise ValueError(
-            f"AI javobini JSON formatda o'qib bo'lmadi: {e}"
-        ) from e
+    except json.JSONDecodeError:
+        pass
+
+    # Markdown bloklari (```json ... ```) orasidan qidirish
+    match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except json.JSONDecodeError:
+            pass
+            
+    # Umumiy { } qavslar orasini qidirish (Eng oxirgi chora)
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError("LLM javobidan yaroqli JSON topilmadi.")
 
 
-def _build_analysis_result(
-    data: dict,
-    post_url: str,
-    total_comments: int,
-) -> AnalysisResult:
-    """Parse qilingan AI javobidan AnalysisResult obyekti yaratadi."""
+# ── Asosiy funksiya ────────────────────────────────────────────────────
 
-    # ── Sentiment ─────────────────────────────────────────────────────
-    sentiment_data = data.get("sentiment", {})
-    sentiment = SentimentScore(
-        positive=float(sentiment_data.get("positive", 0)),
-        negative=float(sentiment_data.get("negative", 0)),
-        neutral=float(sentiment_data.get("neutral", 0)),
-    )
-
-    # ── Categories ────────────────────────────────────────────────────
-    cat_data = data.get("categories", {})
-    categories = CategoryBreakdown(
-        praise=cat_data.get("praise", []),
-        criticism=cat_data.get("criticism", []),
-        question=cat_data.get("question", []),
-        suggestion=cat_data.get("suggestion", []),
-        spam=cat_data.get("spam", []),
-        neutral=cat_data.get("neutral", []),
-        emoji_only=cat_data.get("emoji_only", []),
-    )
-
-    # ── Top topics ────────────────────────────────────────────────────
-    top_topics = data.get("top_topics", [])
-
-    # ── Summary ───────────────────────────────────────────────────────
-    summary = data.get("summary", "Xulosa mavjud emas.")
-
-    return AnalysisResult(
-        post_url=post_url,
-        total_comments=total_comments,
-        sentiment=sentiment,
-        categories=categories,
-        top_topics=top_topics,
-        summary=summary,
-    )
-
-
-def analyze_comments(
-    config: Config,
-    scrape_result: ScrapeResult,
-) -> AnalysisResult:
+def analyze_comments(config: Config, scrape_result: ScrapeResult) -> AnalysisResult:
     """
-    Yig'ilgan kommentariyalarni Gemini AI bilan tahlil qiladi.
-
-    Args:
-        config: Loyiha konfiguratsiyasi (Gemini API key va model nomi).
-        scrape_result: Scraper natijasi (kommentariyalar ro'yxati).
-
-    Returns:
-        AnalysisResult: AI tahlil natijasi — sentiment, kategoriyalar,
-            mavzular va xulosa.
-
-    Raises:
-        ValueError: AI javobini parse qilishda xato.
-        ConnectionError: Gemini API ga ulanishda xato.
+    OpenRouter API yordamida izohlarni tahlil qiladi.
     """
     if not scrape_result.comments:
-        logger.warning("Tahlil qilish uchun kommentariya yo'q.")
-        return AnalysisResult(
-            post_url=scrape_result.post_url,
-            total_comments=0,
-            summary="Kommentariyalar topilmadi.",
+        logger.warning("Tahlil uchun kommentariyalar yo'q.")
+        return _empty_result(scrape_result.post_url)
+
+    logger.info(f"OpenRouter API ga {len(scrape_result.comments)} ta kommentariya yuborilmoqda (model: {config.openrouter_model})...")
+
+    # OpenRouter uchun OpenAI mijozini sozlash
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=config.openrouter_api_key,
+    )
+
+    # Izohlarni matn holatiga keltirish
+    comments_text = "\n".join(
+        f"- {c.username}: {c.text}" for c in scrape_result.comments
+    )
+    user_prompt = f"Quyidagi izohlarni tahlil qiling va JSON formatida qaytaring:\n\n{comments_text}"
+
+    # OpenRouter API ba'zan bepul modellarga limit qo'yadi (429 Xato)
+    # Shuning uchun agar birinchi model ishlamasa, boshqa bepul modellarni sinab ko'ramiz
+    fallback_models = [
+        config.openrouter_model,
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "google/gemma-4-26b-a4b-it:free",
+        "qwen/qwen3-coder:free",
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+        "openai/gpt-oss-120b:free"
+    ]
+
+    for model_name in fallback_models:
+        logger.info(f"OpenRouter API ga {len(scrape_result.comments)} ta kommentariya yuborilmoqda (model: {model_name})...")
+        try:
+            # OpenRouter ga so'rov yuborish
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,
+            )
+            
+            raw_output = completion.choices[0].message.content
+            logger.info(f"OpenRouter API dan javob muvaffaqiyatli olindi (Ishlagan model: {model_name}).")
+            
+            # Natijani JSON formatga o'tkazish
+            parsed_data = _extract_json_from_text(raw_output)
+            return _build_result(parsed_data, scrape_result)
+
+        except Exception as e:
+            # Agar rate limit xatosi (429) bo'lsa yoki model topilmasa (404), davom etamiz
+            if "429" in str(e) or "404" in str(e) or "rate-limited" in str(e).lower():
+                logger.warning(f"Model {model_name} band yoki o'chirilgan. Boshqasiga o'tilmoqda... Xato: {e}")
+                continue
+            
+            # Agar boshqa jiddiy xato bo'lsa, to'xtatamiz
+            logger.error(f"Kutilmagan API xatosi ({model_name}): {e}")
+            break
+
+    # Agar hamma modellar xato bergan bo'lsa:
+    logger.error("Barcha bepul modellar hozircha band (Rate Limited). Tahlil amalga oshmadi.")
+    return _empty_result(scrape_result.post_url)
+
+
+def _build_result(data: Dict[str, Any], scrape_result: ScrapeResult) -> AnalysisResult:
+    """JSON ma'lumotni AnalysisResult obyektiga o'giradi."""
+    categories_obj = {}
+    
+    cats_data = data.get("categories", {})
+    for cat_name in CATEGORIES:
+        comments_list = cats_data.get(cat_name, [])
+        categories_obj[cat_name] = CategoryData(
+            count=len(comments_list),
+            comments=comments_list
         )
 
-    # ── Gemini API sozlash ────────────────────────────────────────────
-    genai.configure(api_key=config.gemini_api_key)
-
-    model = genai.GenerativeModel(
-        model_name=config.gemini_model,
-        system_instruction=_SYSTEM_INSTRUCTION,
-        generation_config=genai.GenerationConfig(
-            temperature=0.3,          # Aniq va barqaror natija
-            top_p=0.9,
-            max_output_tokens=4096,
-            response_mime_type="application/json",
-        ),
-    )
-
-    # ── Prompt tayyorlash ─────────────────────────────────────────────
-    comments_text = _format_comments_for_prompt(scrape_result)
-    prompt = _ANALYSIS_PROMPT_TEMPLATE.format(
-        count=scrape_result.total_comments,
-        comments_text=comments_text,
-    )
-
-    logger.info(
-        "Gemini AI ga %d ta kommentariya yuborilmoqda (model: %s)...",
-        scrape_result.total_comments,
-        config.gemini_model,
-    )
-
-    # ── AI ga so'rov yuborish ─────────────────────────────────────────
-    try:
-        response = model.generate_content(prompt)
-    except Exception as e:
-        msg = f"Gemini API xatosi: {e}"
-        logger.error(msg)
-        raise ConnectionError(msg) from e
-
-    if not response.text:
-        raise ValueError("Gemini AI bo'sh javob qaytardi.")
-
-    logger.info("Gemini AI javob berdi. Parse qilinmoqda...")
-
-    # ── Javobni parse qilish ──────────────────────────────────────────
-    parsed_data = _parse_ai_response(response.text)
-
-    # ── Natijani yaratish ─────────────────────────────────────────────
-    result = _build_analysis_result(
-        data=parsed_data,
+    return AnalysisResult(
+        summary_uz=data.get("summary_uz", "Xulosa olinmadi."),
+        positive_percent=int(data.get("positive_percent", 0)),
+        negative_percent=int(data.get("negative_percent", 0)),
+        neutral_percent=int(data.get("neutral_percent", 0)),
+        categories=categories_obj,
         post_url=scrape_result.post_url,
-        total_comments=scrape_result.total_comments,
+        total_analyzed=len(scrape_result.comments)
     )
 
-    logger.info(
-        "✅ Tahlil yakunlandi: ijobiy=%.0f%%, salbiy=%.0f%%, neytral=%.0f%%",
-        result.sentiment.positive,
-        result.sentiment.negative,
-        result.sentiment.neutral,
-    )
 
-    return result
+def _empty_result(post_url: str) -> AnalysisResult:
+    """Xato yuz berganda yoki izoh yo'q bo'lganda bo'sh obyekt qaytaradi."""
+    return AnalysisResult(
+        summary_uz="Hech qanday ma'lumot tahlil qilinmadi yoki xatolik yuz berdi.",
+        positive_percent=0,
+        negative_percent=0,
+        neutral_percent=0,
+        categories={cat: CategoryData() for cat in CATEGORIES},
+        post_url=post_url,
+        total_analyzed=0
+    )
