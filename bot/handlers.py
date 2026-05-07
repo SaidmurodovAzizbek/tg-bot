@@ -26,7 +26,7 @@ from aiogram.types import CallbackQuery, Message
 from config import Config
 from core.analyzer import AnalysisResult, analyze_comments
 from core.reporter import format_for_telegram
-from core.scraper import InstagramScraper, ScrapeResult
+from core.scraper import ApifyInstagramScraper, ScrapeResult
 
 from .keyboards import CB, back_keyboard, categories_keyboard, main_result_keyboard
 
@@ -158,7 +158,7 @@ async def _run_analysis(message: Message, config: Config, post_url: str) -> None
 
     # ── URL Validatsiya ───────────────────────────────────────────────
     try:
-        InstagramScraper._validate_url(post_url)
+        ApifyInstagramScraper._validate_url(post_url)
     except ValueError:
         await loading_msg.edit_text(
             "❌ *Noto'g'ri URL!*\n\n"
@@ -172,7 +172,7 @@ async def _run_analysis(message: Message, config: Config, post_url: str) -> None
 
     # ── Instagram Scraping ────────────────────────────────────────────
     try:
-        scraper = InstagramScraper(config)
+        scraper = ApifyInstagramScraper(config)
         scrape_result = scraper.scrape_comments(post_url)
         _user_scraped[user_id] = scrape_result
     except ValueError as e:

@@ -1,9 +1,8 @@
 """
-Instagram Comment Analyzer — Kommentariya yig'uvchi (Scraper).
+Instagram Scraper moduli (Apify orqali ishlaydi).
 
-Bu modul Instagram postidan kommentariyalarni yig'ish
-funksionalligini ta'minlaydi. instagrapi kutubxonasi orqali
-Instagram'ga kiradi va berilgan post URL'dan kommentariyalarni oladi.
+Bu modul Apify xizmati yordamida hech qanday login yoki parolsiz,
+qora ro'yxatga tushish xavfisiz Instagram postlaridan izohlarni yig'adi.
 """
 
 from __future__ import annotations
@@ -11,184 +10,116 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
-from functools import lru_cache
+from typing import List, Dict, Any
 
-from instagrapi import Client
-from instagrapi.exceptions import (
-    ClientError,
-    LoginRequired,
-    MediaNotFound,
-    UserNotFound,
-)
-
+from apify_client import ApifyClient
 from config import Config
 
 logger = logging.getLogger(__name__)
 
-# ── Instagram URL validatsiya pattern ─────────────────────────────────
-_INSTAGRAM_URL_PATTERN = re.compile(
-    r"https?://(www\.)?instagram\.com/(p|reel|tv)/[\w-]+/?",
-)
-
-
-# ── Data Classes ──────────────────────────────────────────────────────
+# ── Ma'lumotlar modellari ──────────────────────────────────────────────
 
 @dataclass
-class Comment:
-    """Bitta Instagram kommentariyasini ifodalovchi data class."""
-
+class ScrapedComment:
+    """Yagona kommentariyani ifodalovchi data-class."""
+    id: str
     username: str
     text: str
-    timestamp: datetime
-    like_count: int = 0
-
+    likes_count: int = 0
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "username": self.username,
+            "text": self.text,
+            "likes_count": self.likes_count,
+        }
 
 @dataclass
 class ScrapeResult:
-    """Scraping natijasini saqlash uchun data class."""
-
+    """Scraping natijasini saqlovchi obyekt."""
     post_url: str
-    post_shortcode: str
-    total_comments: int
-    comments: list[Comment] = field(default_factory=list)
+    media_id: str = "unknown"
+    comments: List[ScrapedComment] = field(default_factory=list)
+    total_comments: int = 0
 
 
-# ── Instagram Client boshqaruvchisi ──────────────────────────────────
+# ── Validatsiya ────────────────────────────────────────────────────────
 
-class InstagramScraper:
-    """
-    Instagram kommentariyalarini yig'ish uchun sinf.
+_INSTAGRAM_URL_PATTERN = re.compile(
+    r"^https?://(www\.)?instagram\.com/(p|reel|tv)/[\w-]+/?(.*?)$"
+)
 
-    Login sessiyasini boshqaradi va kommentariyalarni
-    strukturalangan formatda qaytaradi.
-    """
+# ── Asosiy Scraper Sinfi ───────────────────────────────────────────────
 
-    def __init__(self, config: Config) -> None:
+class ApifyInstagramScraper:
+    """Apify orqali Instagram postlaridan izohlarni yig'uvchi sinf."""
+
+    def __init__(self, config: Config):
         self._config = config
-        self._client: Client | None = None
-
-    def _login(self) -> Client:
-        """
-        Instagram'ga login qiladi va Client obyektini qaytaradi.
-
-        Returns:
-            Client: Autentifikatsiya qilingan Instagram client.
-
-        Raises:
-            ConnectionError: Login muvaffaqiyatsiz bo'lganda.
-        """
-        if self._client is not None:
-            return self._client
-
-        logger.info("Instagram'ga kirilmoqda: %s", self._config.instagram_username)
-
-        client = Client()
-        # ── Xavfsizlik sozlamalari ────────────────────────────────────
-        client.delay_range = [1, 3]  # So'rovlar orasida 1-3 soniya kutish
-
-        try:
-            client.login(
-                self._config.instagram_username,
-                self._config.instagram_password,
+        
+        if not self._config.apify_api_token or self._config.apify_api_token.startswith("your_"):
+            raise ValueError(
+                "APIFY_API_TOKEN kiritilmagan! "
+                "Iltimos, apify.com saytidan ro'yxatdan o'tib token oling va .env fayliga kiriting."
             )
-        except (LoginRequired, ClientError, Exception) as e:
-            msg = (
-                f"Instagram'ga kirish muvaffaqiyatsiz: {e}\n"
-                f"Username va passwordni tekshiring."
-            )
-            logger.error(msg)
-            raise ConnectionError(msg) from e
-
-        logger.info("Instagram'ga muvaffaqiyatli kirildi.")
-        self._client = client
-        return client
+            
+        self.client = ApifyClient(self._config.apify_api_token)
 
     def scrape_comments(self, post_url: str) -> ScrapeResult:
         """
-        Berilgan Instagram post URL'dan kommentariyalarni yig'adi.
-
-        Args:
-            post_url: Instagram post URL manzili.
-                Masalan: https://www.instagram.com/p/ABC123/
-
-        Returns:
-            ScrapeResult: Yig'ilgan kommentariyalar natijasi.
-
-        Raises:
-            ValueError: Noto'g'ri URL format bo'lganda.
-            ConnectionError: Instagram'ga ulanishda xato bo'lganda.
-            LookupError: Post topilmaganda.
+        Apify xizmati orqali berilgan URL dan izohlarni yig'adi.
         """
-        # ── URL validatsiya ───────────────────────────────────────────
         self._validate_url(post_url)
-
-        # ── Login ─────────────────────────────────────────────────────
-        client = self._login()
-
-        # ── Media PK olish ────────────────────────────────────────────
-        try:
-            media_pk = client.media_pk_from_url(post_url)
-            media_id = client.media_id(media_pk)
-        except (MediaNotFound, ClientError, Exception) as e:
-            msg = f"Post topilmadi: {post_url} — {e}"
-            logger.error(msg)
-            raise LookupError(msg) from e
-
-        logger.info("Post topildi: media_pk=%s, media_id=%s", media_pk, media_id)
-
-        # ── Shortcode ajratib olish ───────────────────────────────────
-        shortcode = self._extract_shortcode(post_url)
-
-        # ── Kommentariyalarni yig'ish ─────────────────────────────────
-        max_comments = self._config.max_comments
-        logger.info("Kommentariyalar yig'ilmoqda (max: %d)...", max_comments)
+        
+        logger.info(f"Apify orqali URL tahlil qilinmoqda: {post_url}")
+        
+        # Apify dagi rasmiy "instagram-comment-scraper" aktyori (Actor)
+        actor_id = "apify/instagram-comment-scraper"
+        
+        # Aktyorga yuboriladigan ma'lumotlar
+        run_input = {
+            "directUrls": [post_url],
+            "resultsLimit": self._config.max_comments,
+        }
 
         try:
-            raw_comments = client.media_comments(media_id, amount=max_comments)
-        except (ClientError, Exception) as e:
-            msg = f"Kommentariyalarni olishda xato: {e}"
-            logger.error(msg)
-            raise ConnectionError(msg) from e
+            logger.info("Apify scraper ishga tushirilmoqda. Bu bir necha soniya olishi mumkin...")
+            # Run the actor synchronously
+            run = self.client.actor(actor_id).call(run_input=run_input)
+            
+            # Natijalarni (Dataset) olish
+            dataset_id = run["defaultDatasetId"]
+            items = list(self.client.dataset(dataset_id).iterate_items())
+            
+            logger.info(f"Apify jami {len(items)} ta izoh topdi.")
+            
+            scraped_comments = []
+            for item in items:
+                # Apify qaytargan JSON formatni o'zimizga moslash
+                scraped_comments.append(
+                    ScrapedComment(
+                        id=item.get("id", "unknown"),
+                        username=item.get("ownerUsername", "unknown"),
+                        text=item.get("text", ""),
+                        likes_count=item.get("likesCount", 0),
+                    )
+                )
 
-        # ── Natijalarni strukturalash ─────────────────────────────────
-        comments = [
-            Comment(
-                username=c.user.username,
-                text=c.text,
-                timestamp=c.created_at_utc,
-                like_count=c.like_count or 0,
+            return ScrapeResult(
+                post_url=post_url,
+                media_id=self._extract_shortcode(post_url),
+                comments=scraped_comments,
+                total_comments=len(scraped_comments)
             )
-            for c in raw_comments
-            if c.text  # Bo'sh kommentlarni o'tkazib yuborish
-        ]
-
-        result = ScrapeResult(
-            post_url=post_url,
-            post_shortcode=shortcode,
-            total_comments=len(comments),
-            comments=comments,
-        )
-
-        logger.info(
-            "✅ %d ta kommentariya yig'ildi (post: %s)",
-            result.total_comments,
-            shortcode,
-        )
-
-        return result
+            
+        except Exception as e:
+            logger.error(f"Apify bilan aloqada xatolik yuz berdi: {e}")
+            raise ConnectionError(f"Ma'lumot yig'ishda xatolik (Apify): {e}")
 
     @staticmethod
     def _validate_url(url: str) -> None:
-        """
-        Instagram post URL formatini tekshiradi.
-
-        Args:
-            url: Tekshiriladigan URL.
-
-        Raises:
-            ValueError: Noto'g'ri format bo'lganda.
-        """
+        """Instagram URL ni tekshiradi."""
         if not _INSTAGRAM_URL_PATTERN.match(url):
             raise ValueError(
                 f"Noto'g'ri Instagram URL: {url}\n"
@@ -198,27 +129,20 @@ class InstagramScraper:
     @staticmethod
     def _extract_shortcode(url: str) -> str:
         """URL dan post shortcode ni ajratib oladi."""
-        # https://www.instagram.com/p/ABC123/ → ABC123
-        parts = url.rstrip("/").split("/")
-        return parts[-1] if parts else "unknown"
+        # https://www.instagram.com/p/ABC123/?igsh=...
+        try:
+            clean_url = url.split("?")[0].rstrip("/")
+            parts = clean_url.split("/")
+            return parts[-1] if parts else "unknown"
+        except Exception:
+            return "unknown"
 
 
-# ── Convenience function ──────────────────────────────────────────────
+# ── Convenience wrapper ───────────────────────────────────────────────
 
 def scrape_comments(config: Config, post_url: str) -> ScrapeResult:
     """
-    Instagram postidan kommentariyalarni yig'adi (convenience wrapper).
-
-    Bu funksiya InstagramScraper sinfini yaratadi va
-    kommentariyalarni yig'ib qaytaradi. Har bir chaqiruvda
-    yangi login sessiyasi ochiladi.
-
-    Args:
-        config: Loyiha konfiguratsiyasi.
-        post_url: Instagram post URL manzili.
-
-    Returns:
-        ScrapeResult: Yig'ilgan kommentariyalar natijasi.
+    Tashqi foydalanish uchun qulay o'ram (wrapper).
     """
-    scraper = InstagramScraper(config)
+    scraper = ApifyInstagramScraper(config)
     return scraper.scrape_comments(post_url)

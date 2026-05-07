@@ -1,9 +1,8 @@
 # Instagram Comment Analyzer Bot - Dependencies
 # ================================================
 
-# ── Instagram API ──────────────────────────────────────────────────────
-instagrapi==2.1.2
-Pillow>=8.1.1
+# ── Instagram API (No Login) ──────────────────────────────────────────
+apify-client>=1.8.0
 
 # ── Google Generative AI (Gemini) ──────────────────────────────────────
 google-generativeai==0.8.5

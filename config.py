@@ -25,10 +25,7 @@ load_dotenv(dotenv_path=_env_path)
 
 @dataclass(frozen=True)
 class Config:
-    """Loyiha konfiguratsiyasini saqlash uchun immutable data class."""
-
-    instagram_username: str
-    instagram_password: str
+    apify_api_token: str
     gemini_api_key: str
     telegram_bot_token: str
     max_comments: int
@@ -68,8 +65,7 @@ def load_config() -> Config:
         ValueError: Agar majburiy environment variable topilmasa.
     """
     config = Config(
-        instagram_username=_require_env("INSTAGRAM_USERNAME"),
-        instagram_password=_require_env("INSTAGRAM_PASSWORD"),
+        apify_api_token=_require_env("APIFY_API_TOKEN"),
         gemini_api_key=_require_env("GEMINI_API_KEY"),
         telegram_bot_token=_require_env("TELEGRAM_BOT_TOKEN"),
         max_comments=int(getenv("MAX_COMMENTS", "50")),
@@ -90,11 +86,10 @@ def display_config(config: Config) -> None:
     table.add_column("Parametr", style="bold white", min_width=22)
     table.add_column("Qiymat", style="green")
 
-    table.add_row("Instagram User", config.instagram_username)
-    table.add_row("Instagram Password", "•" * min(len(config.instagram_password), 12))
-    table.add_row("Gemini API Key", config.gemini_api_key[:8] + "••••••••")
+    table.add_row("Apify API Token", "•" * 12 + config.apify_api_token[-4:] if config.apify_api_token else "Kiritilmagan")
+    table.add_row("Gemini API Key", config.gemini_api_key[:10] + "••••••••")
     table.add_row("Gemini Model", config.gemini_model)
-    table.add_row("Telegram Bot", config.telegram_bot_token[:8] + "••••••••")
+    table.add_row("Telegram Bot", config.telegram_bot_token[:10] + "••••••••")
     table.add_row("Max Comments", str(config.max_comments))
 
     console.print(Panel(table, border_style="bright_blue", padding=(1, 2)))

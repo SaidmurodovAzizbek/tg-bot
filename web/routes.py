@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 import uuid
 import logging
 
-from core.scraper import InstagramScraper
+from core.scraper import ApifyInstagramScraper
 from core.analyzer import analyze_comments
 from core.reporter import format_for_web
 
@@ -34,10 +34,10 @@ def setup_routes(app: FastAPI, templates: Jinja2Templates) -> None:
         
         try:
             # 1. URL Validatsiya
-            InstagramScraper._validate_url(post_url)
+            ApifyInstagramScraper._validate_url(post_url)
             
             # 2. Scrape
-            scraper = InstagramScraper(config)
+            scraper = ApifyInstagramScraper(config)
             scrape_result = scraper.scrape_comments(post_url)
             
             # 3. Analyze
