@@ -7,11 +7,13 @@ Ishlatish:
 
 import logging
 import sys
+import uvicorn
 
 from rich.console import Console
 from rich.panel import Panel
 
 from config import load_config
+from web.app import init_app
 
 console = Console()
 
@@ -42,14 +44,15 @@ def main() -> None:
         sys.exit(1)
 
     console.print("[bold green]✓[/bold green] Konfiguratsiya yuklandi.")
-
-    # TODO: 5-bosqichda to'liq implementatsiya qilinadi
-    # - FastAPI ilova yaratish
-    # - uvicorn bilan serverni ishga tushirish
-    # - http://localhost:8000 da ishlaydi
-    console.print(
-        "[bold yellow]⚠ Web Server 5-bosqichda implementatsiya qilinadi.[/bold yellow]"
-    )
+    
+    # Ilovani initsializatsiya qilish
+    app = init_app(config)
+    
+    console.print("[bold cyan]🚀 Server ishga tushirilmoqda...[/bold cyan]")
+    console.print("[dim]Brauzerda oching: http://localhost:8000[/dim]")
+    
+    # Uvicorn orqali serverni yurgizish
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="glass-panel analyze-card">
+    <h2>Postni Tahlil Qilish</h2>
+    <p class="card-desc">Tahlil qilish uchun ochiq Instagram postining URL manzilini kiriting.</p>
+    
+    {% if error %}
+    <div class="error-message">
+        <span class="error-icon">⚠️</span>
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <form id="analyze-form" class="analyze-form">
+        <div class="input-group">
+            <input type="url" id="post-url" name="post-url" placeholder="https://www.instagram.com/p/..." required autocomplete="off">
+            <div class="input-glow"></div>
+        </div>
+        
+        <button type="submit" id="submit-btn" class="primary-btn">
+            <span class="btn-text">Tahlilni Boshlash</span>
+            <span class="btn-icon">✨</span>
+        </button>
+    </form>
+
+    <div id="loading-state" class="loading-state hidden">
+        <div class="spinner"></div>
+        <h3>AI Tahlil Qilmoqda...</h3>
+        <p class="loading-status" id="loading-status">Kommentariyalar yig'ilmoqda (bu 30-60 soniya vaqt olishi mumkin)</p>
+        
+        <div class="progress-container">
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="error-state" class="error-message hidden">
+        <span class="error-icon">❌</span>
+        <span id="error-text">Xatolik yuz berdi.</span>
+    </div>
+</div>
+
+<div class="features-grid">
+    <div class="glass-panel feature-card">
+        <div class="feature-icon">🧠</div>
+        <h3>AI Tahlil</h3>
+        <p>Google Gemini orqali chuqur sentiment tahlili.</p>
+    </div>
+    <div class="glass-panel feature-card">
+        <div class="feature-icon">📂</div>
+        <h3>Kategoriyalar</h3>
+        <p>Maqtov, tanqid, savollar va boshqalarga avtomatik ajratish.</p>
+    </div>
+    <div class="glass-panel feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Tezkor</h3>
+        <p>O'nlab kommentariyalarni bir necha soniyada tahlil qilish.</p>
+    </div>
+</div>
+{% endblock %}

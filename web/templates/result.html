@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="result-header glass-panel">
+    <a href="/" class="back-btn">⬅️ Orqaga</a>
+    <div class="post-info">
+        <h2>Tahlil Natijasi</h2>
+        <a href="{{ result.post_url }}" target="_blank" class="post-link">{{ result.post_url }}</a>
+    </div>
+    <div class="total-badge">
+        <span class="badge-value">{{ result.total_comments }}</span>
+        <span class="badge-label">Kommentariya</span>
+    </div>
+</div>
+
+<div class="dashboard-grid">
+    <!-- Sentiment Chart -->
+    <div class="glass-panel chart-card">
+        <h3>Kayfiyat (Sentiment)</h3>
+        <div class="chart-container">
+            <canvas id="sentimentChart"></canvas>
+        </div>
+        <div class="sentiment-stats">
+            <div class="stat positive">
+                <span class="dot"></span>
+                <span>Ijobiy: {{ result.sentiment.positive }}%</span>
+            </div>
+            <div class="stat negative">
+                <span class="dot"></span>
+                <span>Salbiy: {{ result.sentiment.negative }}%</span>
+            </div>
+            <div class="stat neutral">
+                <span class="dot"></span>
+                <span>Neytral: {{ result.sentiment.neutral }}%</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Summary -->
+    <div class="glass-panel summary-card">
+        <h3>✨ AI Xulosasi</h3>
+        <p class="summary-text">{{ result.summary }}</p>
+        
+        <h4 class="topics-title">🏷️ Top Mavzular</h4>
+        <div class="topics-tags">
+            {% for topic in result.top_topics %}
+                <span class="topic-tag">{{ topic }}</span>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Categories Breakdown -->
+<h3 class="section-title">📂 Kategoriyalar Bo'yicha Tafsilotlar</h3>
+<div class="categories-grid">
+    {% for cat in result.categories %}
+        {% if cat.count > 0 %}
+        <div class="glass-panel category-card" style="--cat-color: var(--{{ cat.color }});">
+            <div class="cat-header">
+                <div class="cat-title">
+                    <span class="cat-emoji">{{ cat.emoji }}</span>
+                    <h4>{{ cat.label }}</h4>
+                </div>
+                <div class="cat-stats">
+                    <span class="cat-count">{{ cat.count }}</span>
+                    <span class="cat-pct">{{ cat.percentage }}%</span>
+                </div>
+            </div>
+            
+            <div class="cat-comments">
+                {% for comment in cat.comments %}
+                <div class="comment-item">
+                    <div class="comment-user">@{{ comment.username }}</div>
+                    <div class="comment-text">{{ comment.text }}</div>
+                    {% if comment.reason %}
+                    <div class="comment-reason">↳ {{ comment.reason }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Serverdan olingan ma'lumotlarni JavaScript ga o'tkazish
+    const sentimentData = {
+        positive: {{ result.sentiment.positive }},
+        negative: {{ result.sentiment.negative }},
+        neutral: {{ result.sentiment.neutral }}
+    };
+    
+    const categoriesData = [
+        {% for cat in result.categories %}
+        {
+            label: '{{ cat.label }}',
+            count: {{ cat.count }},
+            color: '{{ cat.color }}' // JS da CSS variable ni map qilish kerak
+        },
+        {% endfor %}
+    ];
+    
+    // JS faylini ishga tushirish
+    document.addEventListener('DOMContentLoaded', () => {
+        if(typeof initResultPage === 'function') {
+            initResultPage(sentimentData, categoriesData);
+        }
+    });
+</script>
+{% endblock %}
