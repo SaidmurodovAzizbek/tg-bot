@@ -247,13 +247,9 @@ async def cb_show_details(callback: CallbackQuery) -> None:
         return
 
     counts = {
-        "praise":     len(result.categories.praise),
-        "criticism":  len(result.categories.criticism),
-        "question":   len(result.categories.question),
-        "suggestion": len(result.categories.suggestion),
-        "spam":       len(result.categories.spam),
-        "neutral":    len(result.categories.neutral),
-        "emoji_only": len(result.categories.emoji_only),
+        "Positive": len(result.categories.get("Positive").comments) if "Positive" in result.categories else 0,
+        "Negative": len(result.categories.get("Negative").comments) if "Negative" in result.categories else 0,
+        "Neutral":  len(result.categories.get("Neutral").comments) if "Neutral" in result.categories else 0,
     }
     total = result.total_comments
 
@@ -266,13 +262,9 @@ async def cb_show_details(callback: CallbackQuery) -> None:
 
     # Nol bo'lmagan kategoriyalar sonini ko'rsatish
     meta_map = {
-        "praise":     "📣 Maqtov",
-        "criticism":  "😡 Tanqid",
-        "question":   "❓ Savol",
-        "suggestion": "💡 Taklif",
-        "spam":       "🗑️ Spam",
-        "neutral":    "😐 Neytral",
-        "emoji_only": "😀 Faqat emoji",
+        "Positive": "🟢 Ijobiy",
+        "Negative": "🔴 Salbiy",
+        "Neutral":  "⚪ Neytral",
     }
     for key, label in meta_map.items():
         count = counts[key]
@@ -302,13 +294,9 @@ async def cb_category_detail(callback: CallbackQuery) -> None:
     cat_key = callback.data.split(":", 1)[1] if callback.data else ""
 
     cat_map = {
-        "praise":     ("📣 Maqtov",      result.categories.praise),
-        "criticism":  ("😡 Tanqid",      result.categories.criticism),
-        "question":   ("❓ Savol",       result.categories.question),
-        "suggestion": ("💡 Taklif",      result.categories.suggestion),
-        "spam":       ("🗑️ Spam",        result.categories.spam),
-        "neutral":    ("😐 Neytral",     result.categories.neutral),
-        "emoji_only": ("😀 Faqat emoji", result.categories.emoji_only),
+        "Positive": ("🟢 Ijobiy", result.categories.get("Positive").comments if "Positive" in result.categories else []),
+        "Negative": ("🔴 Salbiy", result.categories.get("Negative").comments if "Negative" in result.categories else []),
+        "Neutral":  ("⚪ Neytral", result.categories.get("Neutral").comments if "Neutral" in result.categories else []),
     }
 
     if cat_key not in cat_map:

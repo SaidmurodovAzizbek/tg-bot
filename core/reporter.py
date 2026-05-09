@@ -19,13 +19,9 @@ logger = logging.getLogger(__name__)
 
 # ── Emoji va label mapping ────────────────────────────────────────────
 _CATEGORY_META = {
-    "Praise":     {"emoji": "📣", "label": "Maqtov",      "color": "green"},
-    "Criticism":  {"emoji": "😡", "label": "Tanqid",      "color": "red"},
-    "Question":   {"emoji": "❓", "label": "Savol",       "color": "blue"},
-    "Suggestion": {"emoji": "💡", "label": "Taklif",      "color": "yellow"},
-    "Spam":       {"emoji": "🗑️", "label": "Spam",        "color": "dim"},
-    "Neutral":    {"emoji": "😐", "label": "Neytral",     "color": "white"},
-    "Emojis":     {"emoji": "😀", "label": "Faqat emoji", "color": "bright_magenta"},
+    "Positive": {"emoji": "🟢", "label": "Ijobiy",  "color": "green"},
+    "Negative": {"emoji": "🔴", "label": "Salbiy",  "color": "red"},
+    "Neutral":  {"emoji": "⚪", "label": "Neytral", "color": "white"},
 }
 
 

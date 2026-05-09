@@ -21,13 +21,9 @@ class CB:
     HELP           = "action:help"
 
     # Kategoriyalar batafsil ko'rinishi
-    CAT_PRAISE     = "cat:praise"
-    CAT_CRITICISM  = "cat:criticism"
-    CAT_QUESTION   = "cat:question"
-    CAT_SUGGESTION = "cat:suggestion"
-    CAT_SPAM       = "cat:spam"
-    CAT_NEUTRAL    = "cat:neutral"
-    CAT_EMOJI      = "cat:emoji_only"
+    CAT_POSITIVE   = "cat:Positive"
+    CAT_NEGATIVE   = "cat:Negative"
+    CAT_NEUTRAL    = "cat:Neutral"
 
     # Batafsil natija
     SHOW_DETAILS   = "action:details"
@@ -75,22 +71,18 @@ def categories_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     categories = [
-        (CB.CAT_PRAISE,     "📣 Maqtov"),
-        (CB.CAT_CRITICISM,  "😡 Tanqid"),
-        (CB.CAT_QUESTION,   "❓ Savol"),
-        (CB.CAT_SUGGESTION, "💡 Taklif"),
-        (CB.CAT_SPAM,       "🗑️ Spam"),
-        (CB.CAT_NEUTRAL,    "😐 Neytral"),
-        (CB.CAT_EMOJI,      "😀 Faqat emoji"),
+        (CB.CAT_POSITIVE,   "🟢 Ijobiy"),
+        (CB.CAT_NEGATIVE,   "🔴 Salbiy"),
+        (CB.CAT_NEUTRAL,    "⚪ Neytral"),
     ]
 
     for callback_data, text in categories:
         builder.button(text=text, callback_data=callback_data)
 
-    builder.adjust(2, 2, 2, 1)  # 2-2-2-1 joylashuv
+    builder.adjust(2, 1)  # 2-1 joylashuv
 
     builder.button(text="⬅️ Orqaga", callback_data=CB.BACK_TO_RESULT)
-    builder.adjust(2, 2, 2, 1, 1)
+    builder.adjust(2, 1, 1)
 
     return builder.as_markup()
 

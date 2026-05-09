@@ -42,13 +42,9 @@ class AnalysisResult:
 # ── Kategoriyalar ro'yxati ─────────────────────────────────────────────
 
 CATEGORIES = [
-    "Praise",     # Maqtov, ijobiy fikrlar
-    "Criticism",  # Tanqid, salbiy fikrlar
-    "Question",   # Savollar
-    "Suggestion", # Taklif yoki maslahatlar
-    "Spam",       # Reklama, botlar, ssilka
-    "Neutral",    # Neytral, oddiy belgilashlar (masalan: ok, +)
-    "Emojis"      # Faqat smayliklardan iborat
+    "Positive", # Ijobiy fikrlar
+    "Negative", # Salbiy fikrlar
+    "Neutral"   # Neytral, savollar, spam
 ]
 
 
@@ -61,14 +57,10 @@ Sizga foydalanuvchilar tomonidan yozilgan bir qancha izohlar beriladi.
 Sizning vazifangiz:
 1. Umumiy izohlarning kayfiyatini (sentiment) tahlil qilib, 1-2 gap bilan O'ZBEK tilida qisqacha xulosa (summary_uz) yozish.
 2. Ijobiy (positive_percent), salbiy (negative_percent) va neytral (neutral_percent) izohlarning umumiy foizini hisoblash (uchalasining yig'indisi doim 100 bo'lishi shart).
-3. HAR BIR izohni quyidagi 7 ta kategoriyadan ENG MOS bittasiga joylashtirish:
-   - "Praise" (Maqtov, duo, minnatdorchilik)
-   - "Criticism" (Tanqid, yomon ko'rish, shikoyat)
-   - "Question" (Savol, narxini yoki manzilni so'rash)
-   - "Suggestion" (Taklif, shunday qilsa yaxshi bo'lardi kabi)
-   - "Spam" (Reklama, obuna bo'ling, botlar yozgan so'zlar)
-   - "Neutral" (Oddiy so'zlar, masalan: "ha", "yo'q", "ok", "+")
-   - "Emojis" (Faqatgina emojilardan iborat bo'lgan izohlar)
+3. HAR BIR izohni quyidagi 3 ta kategoriyadan ENG MOS bittasiga joylashtirish:
+   - "Positive" (Maqtov, duo, minnatdorchilik, xursandchilik bildirilgan izohlar va ijobiy emojilar)
+   - "Negative" (Tanqid, yomon ko'rish, shikoyat, salbiy fikrlar va salbiy emojilar)
+   - "Neutral" (Oddiy so'zlar, savollar, takliflar, spam yoki aniq ijobiy/salbiy bo'lmagan izohlar)
 
 DIQQAT: Natijani FAKATGINA quyidagi toza JSON formatida qaytaring! Hech qanday boshqa matn yoki tushuntirish yozmang.
 
@@ -79,13 +71,9 @@ JSON format nusxasi:
   "negative_percent": 0,
   "neutral_percent": 0,
   "categories": {
-    "Praise": ["izoh1", "izoh2"],
-    "Criticism": [],
-    "Question": [],
-    "Suggestion": [],
-    "Spam": [],
-    "Neutral": [],
-    "Emojis": []
+    "Positive": [{"username": "user1", "text": "izoh1"}],
+    "Negative": [],
+    "Neutral": []
   }
 }
 """
@@ -116,6 +104,69 @@ def _extract_json_from_text(text: str) -> dict:
             pass
 
     raise ValueError("LLM javobidan yaroqli JSON topilmadi.")
+
+
+# ── Zaxira (Fallback) mexanizmi uchun lug'atlar ──────────────────────────
+
+POSITIVE_WORDS = [
+    "zo'r", "ajoyib", "yaxshi", "gap yo'q", "rahmat", "barakalla", "qoyil", 
+    "chiroyli", "super", "omad", "zor", "klass", "gap yõq", "yaxwi", "zur",
+    "👍", "❤️", "🔥", "👏", "😍", "🥰", "💯"
+]
+
+NEGATIVE_WORDS = [
+    "yomon", "yoqmadi", "qimmat", "aldov", "fuflo", "rasvo", "daxshat", 
+    "chatoq", "tavsiya qilmayman", "beziyon", "jirkanch", "axlat",
+    "👎", "🤬", "😡", "💩", "🤮", "🤡"
+]
+
+def _fallback_analyze(scrape_result: ScrapeResult) -> AnalysisResult:
+    """API ishlamay qolganda lug'at yordamida tahlil qiladi."""
+    categories_obj = {
+        "Positive": CategoryData(),
+        "Negative": CategoryData(),
+        "Neutral": CategoryData()
+    }
+    
+    pos_count = 0
+    neg_count = 0
+    neu_count = 0
+    
+    for comment in scrape_result.comments:
+        text_lower = comment.text.lower()
+        
+        is_pos = any(word in text_lower for word in POSITIVE_WORDS)
+        is_neg = any(word in text_lower for word in NEGATIVE_WORDS)
+        
+        comment_dict = {"username": comment.username, "text": comment.text}
+        
+        if is_pos and not is_neg:
+            categories_obj["Positive"].comments.append(comment_dict)
+            categories_obj["Positive"].count += 1
+            pos_count += 1
+        elif is_neg and not is_pos:
+            categories_obj["Negative"].comments.append(comment_dict)
+            categories_obj["Negative"].count += 1
+            neg_count += 1
+        else:
+            categories_obj["Neutral"].comments.append(comment_dict)
+            categories_obj["Neutral"].count += 1
+            neu_count += 1
+            
+    total = len(scrape_result.comments)
+    pos_pct = int(pos_count / total * 100) if total else 0
+    neg_pct = int(neg_count / total * 100) if total else 0
+    neu_pct = 100 - pos_pct - neg_pct if total else 0
+    
+    return AnalysisResult(
+        summary_uz="Tahlil AI xizmatidagi muammolar sababli oddiy so'zlar lug'ati yordamida avtomatik amalga oshirildi.",
+        positive_percent=pos_pct,
+        negative_percent=neg_pct,
+        neutral_percent=neu_pct,
+        categories=categories_obj,
+        post_url=scrape_result.post_url,
+        total_analyzed=total
+    )
 
 
 # ── Asosiy funksiya ────────────────────────────────────────────────────
@@ -184,8 +235,8 @@ def analyze_comments(config: Config, scrape_result: ScrapeResult) -> AnalysisRes
             break
 
     # Agar hamma modellar xato bergan bo'lsa:
-    logger.error("Barcha bepul modellar hozircha band (Rate Limited). Tahlil amalga oshmadi.")
-    return _empty_result(scrape_result.post_url)
+    logger.error("Barcha bepul modellar hozircha band (Rate Limited). Zaxira (fallback) tizim ishga tushirildi.")
+    return _fallback_analyze(scrape_result)
 
 
 def _build_result(data: Dict[str, Any], scrape_result: ScrapeResult) -> AnalysisResult:
