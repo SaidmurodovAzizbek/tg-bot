@@ -1,1 +1,1 @@
-"""Telegram Bot — Instagram Comment Analyzer bot interfeysi."""
+"""Telegram Bot — Instagram Comment Analyzer bot interface."""

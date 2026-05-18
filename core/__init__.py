@@ -1,1 +1,1 @@
-"""Core Engine — Instagram Comment Analyzer yadro modullari."""
+"""Core Engine — Instagram Comment Analyzer core modules."""

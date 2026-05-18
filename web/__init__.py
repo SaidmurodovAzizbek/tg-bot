@@ -1,1 +1,1 @@
-"""Web Application — Instagram Comment Analyzer web interfeysi."""
+"""Web Application — Instagram Comment Analyzer web interface."""
