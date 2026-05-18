@@ -1,8 +1,7 @@
 """
-Instagram Comment Analyzer Bot — Konfiguratsiya yuklagich.
+Configuration loader for the Instagram Comment Analyzer Bot.
 
-Bu modul loyihaning barcha konfiguratsiya sozlamalarini
-.env faylidan yuklaydi va validatsiya qiladi.
+Loads and validates all configuration settings from the .env file.
 """
 
 from __future__ import annotations
@@ -34,35 +33,35 @@ class Config:
 
 def _require_env(name: str) -> str:
     """
-    Berilgan environment variable mavjudligini tekshiradi.
+    Validates the presence of a required environment variable.
 
     Args:
-        name: Environment variable nomi.
+        name: Name of the environment variable.
 
     Returns:
-        Environment variable qiymati.
+        The value of the environment variable.
 
     Raises:
-        ValueError: Agar o'zgaruvchi topilmasa yoki to'ldirilmagan bo'lsa.
+        ValueError: If the variable is missing or contains a placeholder.
     """
     value = getenv(name)
     if not value or value.startswith("your_"):
         raise ValueError(
-            f"'{name}' environment variable topilmadi yoki to'ldirilmagan. "
-            f".env faylini tekshiring va haqiqiy qiymatni kiriting."
+            f"Environment variable '{name}' is missing or not set. "
+            f"Please check the .env file."
         )
     return value
 
 
 def load_config() -> Config:
     """
-    .env faylidan barcha konfiguratsiyalarni yuklaydi va Config obyektini qaytaradi.
+    Loads all configurations from the .env file and returns a Config object.
 
     Returns:
-        Config: Validatsiya qilingan konfiguratsiya obyekti.
+        Config: Validated configuration object.
 
     Raises:
-        ValueError: Agar majburiy environment variable topilmasa.
+        ValueError: If a required environment variable is missing.
     """
     config = Config(
         apify_api_token=_require_env("APIFY_API_TOKEN"),
@@ -72,19 +71,19 @@ def load_config() -> Config:
         openrouter_model=getenv("OPENROUTER_MODEL", "google/gemma-4-31b-it:free"),
     )
 
-    logger.info("Konfiguratsiya muvaffaqiyatli yuklandi.")
+    logger.info("Configuration loaded successfully.")
     return config
 
 
 def display_config(config: Config) -> None:
-    """Konfiguratsiya ma'lumotlarini chiroyli formatda terminalga chiqaradi."""
+    """Displays configuration details in a formatted table."""
     table = Table(
-        title="⚙️  Konfiguratsiya",
+        title="⚙️  Configuration",
         show_header=True,
         header_style="bold cyan",
     )
-    table.add_column("Parametr", style="bold white", min_width=22)
-    table.add_column("Qiymat", style="green")
+    table.add_column("Parameter", style="bold white", min_width=22)
+    table.add_column("Value", style="green")
 
     table.add_row("Apify API Token", "•" * 12 + config.apify_api_token[-4:] if config.apify_api_token else "Kiritilmagan")
     table.add_row("OpenRouter API", config.openrouter_api_key[:10] + "••••••••")

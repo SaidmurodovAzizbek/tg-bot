@@ -1,16 +1,16 @@
 """
-Telegram Bot — Handler'lar (Handlers).
+Telegram Bot — Handlers.
 
-Bu modul barcha Telegram bot komandalar va callback
-so'rovlarini qayta ishlash logikasini o'z ichiga oladi.
+This module contains the logic for processing all Telegram bot
+commands and callback queries.
 
-Qo'llab-quvvatlanadigan komandalar:
-    /start   — Botni boshlash va qo'llanma
-    /analyze — Instagram post URL tahlil qilish
-    /help    — Yordam xabari
+Supported commands:
+    /start   — Start the bot and show the guide
+    /analyze — Analyze an Instagram post URL
+    /help    — Show the help message
 
-Callback'lar:
-    Kategoriyalarni ko'rish, orqaga qaytish, yangi tahlil va boshqalar.
+Callbacks:
+    View categories, navigate back, request new analysis, etc.
 """
 
 from __future__ import annotations
@@ -34,10 +34,17 @@ logger = logging.getLogger(__name__)
 
 router = Router(name="main")
 
-# ── Session-ni saqlash uchun oddiy in-memory storage ─────────────────
-# (Keyinchalik Redis yoki DB bilan almashtirilishi mumkin)
+# ── In-memory session storage ──────────────────────────────────────────
+# (For production, consider using Redis or a Database)
 _user_results: dict[int, AnalysisResult] = {}
 _user_scraped: dict[int, ScrapeResult] = {}
+
+def _save_to_cache(cache: dict, key: int, value: Any, max_size: int = 100) -> None:
+    """Saves to cache and evicts oldest item if max_size is exceeded to prevent memory leaks."""
+    if key not in cache and len(cache) >= max_size:
+        oldest = next(iter(cache))
+        del cache[oldest]
+    cache[key] = value
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -47,8 +54,8 @@ _user_scraped: dict[int, ScrapeResult] = {}
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     """
-    /start komandasi handleri.
-    Foydalanuvchini salomlaydi va botdan foydalanish yo'riqnomasini beradi.
+    /start command handler.
+    Greets the user and provides instructions on how to use the bot.
     """
     first_name = message.from_user.first_name if message.from_user else "Foydalanuvchi"
 
@@ -76,7 +83,7 @@ async def cmd_start(message: Message) -> None:
 
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
-    """/help komandasi handleri."""
+    """/help command handler."""
     text = (
         "❓ *Yordam — Instagram Comment Analyzer*\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -109,10 +116,10 @@ async def cmd_help(message: Message) -> None:
 @router.message(Command("analyze"))
 async def cmd_analyze(message: Message, config: Config) -> None:
     """
-    /analyze <url> komandasi handleri.
-    Instagram post URL'sini oladi va tahlilni boshlaydi.
+    /analyze <url> command handler.
+    Extracts the Instagram post URL and initiates the analysis.
     """
-    # ── URL ni komandadan ajratish ────────────────────────────────────
+    # ── Extract URL from command ──────────────────────────────────────
     parts = message.text.split(maxsplit=1) if message.text else []
     if len(parts) < 2:
         await message.answer(
@@ -130,8 +137,8 @@ async def cmd_analyze(message: Message, config: Config) -> None:
 @router.message(F.text.startswith("https://www.instagram.com/") | F.text.startswith("https://instagram.com/"))
 async def handle_instagram_url(message: Message, config: Config) -> None:
     """
-    Foydalanuvchi Instagram URL yuborsa, avtomatik tahlil boshlaydi.
-    /analyze komandasisiz ham ishlaydi.
+    Automatically starts analysis when a user sends an Instagram URL.
+    Works without the /analyze command.
     """
     post_url = message.text.strip() if message.text else ""
     await _run_analysis(message, config, post_url)
@@ -139,24 +146,24 @@ async def handle_instagram_url(message: Message, config: Config) -> None:
 
 async def _run_analysis(message: Message, config: Config, post_url: str) -> None:
     """
-    Asosiy tahlil jarayonini boshqaradi.
+    Manages the core analysis workflow.
 
-    1. Loading xabar yuboradi
-    2. Kommentariyalarni yig'adi
-    3. AI tahlil qiladi
-    4. Natijani yuboradi
+    1. Sends a loading message
+    2. Scrapes comments (async to avoid blocking)
+    3. Performs AI analysis (async to avoid blocking)
+    4. Delivers the result
     """
     user_id = message.from_user.id if message.from_user else 0
 
-    # ── Loading xabari ────────────────────────────────────────────────
-    loading_msg = await message.answer(
+    # ── Loading Message ────────────────────────────────────────────────
+        loading_msg = await message.answer(
         "⏳ *Tahlil boshlanmoqda...*\n\n"
         f"🔗 `{post_url}`\n\n"
         "📥 Kommentariyalar yuklanmoqda...",
         parse_mode=ParseMode.MARKDOWN,
     )
 
-    # ── URL Validatsiya ───────────────────────────────────────────────
+    # ── URL Validation ───────────────────────────────────────────────
     try:
         ApifyInstagramScraper._validate_url(post_url)
     except ValueError:
@@ -173,8 +180,8 @@ async def _run_analysis(message: Message, config: Config, post_url: str) -> None
     # ── Instagram Scraping ────────────────────────────────────────────
     try:
         scraper = ApifyInstagramScraper(config)
-        scrape_result = scraper.scrape_comments(post_url)
-        _user_scraped[user_id] = scrape_result
+        scrape_result = await asyncio.to_thread(scraper.scrape_comments, post_url)
+        _save_to_cache(_user_scraped, user_id, scrape_result)
     except ValueError as e:
         await loading_msg.edit_text(
             f"❌ *URL xatosi:*\n{e}",
@@ -197,7 +204,7 @@ async def _run_analysis(message: Message, config: Config, post_url: str) -> None
         )
         return
 
-    # ── AI Tahlil ─────────────────────────────────────────────────────
+    # ── AI Analysis ─────────────────────────────────────────────────────
     await loading_msg.edit_text(
         f"⏳ *Tahlil davom etmoqda...*\n\n"
         f"🔗 `{post_url}`\n"
@@ -207,8 +214,8 @@ async def _run_analysis(message: Message, config: Config, post_url: str) -> None
     )
 
     try:
-        analysis_result = analyze_comments(config, scrape_result)
-        _user_results[user_id] = analysis_result
+        analysis_result = await asyncio.to_thread(analyze_comments, config, scrape_result)
+        _save_to_cache(_user_results, user_id, analysis_result)
     except (ValueError, ConnectionError) as e:
         await loading_msg.edit_text(
             f"❌ *AI tahlil xatosi:*\n`{e}`\n\n"
@@ -217,7 +224,7 @@ async def _run_analysis(message: Message, config: Config, post_url: str) -> None
         )
         return
 
-    # ── Natijani chiqarish ────────────────────────────────────────────
+    # ── Output Result ────────────────────────────────────────────
     result_text = format_for_telegram(analysis_result)
     await loading_msg.delete()
     await message.answer(
@@ -238,7 +245,7 @@ async def _run_analysis(message: Message, config: Config, post_url: str) -> None
 
 @router.callback_query(F.data == CB.SHOW_DETAILS)
 async def cb_show_details(callback: CallbackQuery) -> None:
-    """'Kategoriyalar batafsil' tugmasi bosilganda kategoriyalar ro'yxatini chiqaradi."""
+    """Displays the list of categories when the 'Category details' button is pressed."""
     user_id = callback.from_user.id if callback.from_user else 0
     result = _user_results.get(user_id)
 
@@ -283,7 +290,7 @@ async def cb_show_details(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("cat:"))
 async def cb_category_detail(callback: CallbackQuery) -> None:
-    """Kategoriya tugmasi bosilganda o'sha kategoriya kommentariyalarini ko'rsatadi."""
+    """Shows the comments of the selected category."""
     user_id = callback.from_user.id if callback.from_user else 0
     result = _user_results.get(user_id)
 
@@ -338,7 +345,7 @@ async def cb_category_detail(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == CB.BACK_TO_RESULT)
 async def cb_back_to_result(callback: CallbackQuery) -> None:
-    """'Orqaga' tugmasi — asosiy natija xabariga qaytadi."""
+    """'Back' button — returns to the main analysis result."""
     user_id = callback.from_user.id if callback.from_user else 0
     result = _user_results.get(user_id)
 
@@ -358,7 +365,7 @@ async def cb_back_to_result(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == CB.NEW_ANALYSIS)
 async def cb_new_analysis(callback: CallbackQuery) -> None:
-    """'Yangi tahlil' tugmasi — foydalanuvchidan yangi URL so'raydi."""
+    """'New analysis' button — asks the user for a new URL."""
     text = (
         "🔄 *Yangi tahlil*\n\n"
         "Instagram post URL'sini yuboring:\n"
@@ -374,6 +381,6 @@ async def cb_new_analysis(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == CB.HELP)
 async def cb_help(callback: CallbackQuery) -> None:
-    """'Yordam' tugmasi callback handleri."""
+    """'Help' button callback handler."""
     await cb_back_to_result.__wrapped__(callback) if hasattr(cb_back_to_result, "__wrapped__") else None
     await callback.answer("Yordam uchun /help buyrug'ini yuboring.", show_alert=True)

@@ -1,8 +1,8 @@
 """
-Instagram Scraper moduli (Apify orqali ishlaydi).
+Instagram Scraper module (Powered by Apify).
 
-Bu modul Apify xizmati yordamida hech qanday login yoki parolsiz,
-qora ro'yxatga tushish xavfisiz Instagram postlaridan izohlarni yig'adi.
+This module collects comments from Instagram posts without requiring
+login credentials, avoiding IP blacklists using Apify's infrastructure.
 """
 
 from __future__ import annotations
@@ -17,11 +17,11 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
-# ── Ma'lumotlar modellari ──────────────────────────────────────────────
+# ── Data Models ────────────────────────────────────────────────────────
 
 @dataclass
 class ScrapedComment:
-    """Yagona kommentariyani ifodalovchi data-class."""
+    """Represents a single scraped comment."""
     id: str
     username: str
     text: str
@@ -37,66 +37,66 @@ class ScrapedComment:
 
 @dataclass
 class ScrapeResult:
-    """Scraping natijasini saqlovchi obyekt."""
+    """Container for the scraping results."""
     post_url: str
     media_id: str = "unknown"
     comments: List[ScrapedComment] = field(default_factory=list)
     total_comments: int = 0
 
 
-# ── Validatsiya ────────────────────────────────────────────────────────
+# ── Validation ────────────────────────────────────────────────────────
 
 _INSTAGRAM_URL_PATTERN = re.compile(
     r"^https?://(www\.)?instagram\.com/(p|reel|tv)/[\w-]+/?(.*?)$"
 )
 
-# ── Asosiy Scraper Sinfi ───────────────────────────────────────────────
+# ── Main Scraper Class ────────────────────────────────────────────────
 
 class ApifyInstagramScraper:
-    """Apify orqali Instagram postlaridan izohlarni yig'uvchi sinf."""
+    """Class to scrape Instagram comments using Apify."""
 
     def __init__(self, config: Config):
         self._config = config
         
         if not self._config.apify_api_token or self._config.apify_api_token.startswith("your_"):
             raise ValueError(
-                "APIFY_API_TOKEN kiritilmagan! "
-                "Iltimos, apify.com saytidan ro'yxatdan o'tib token oling va .env fayliga kiriting."
+                "APIFY_API_TOKEN is missing! "
+                "Please register on apify.com, get a token, and add it to the .env file."
             )
             
         self.client = ApifyClient(self._config.apify_api_token)
 
     def scrape_comments(self, post_url: str) -> ScrapeResult:
         """
-        Apify xizmati orqali berilgan URL dan izohlarni yig'adi.
+        Scrapes comments from the given URL using Apify.
         """
         self._validate_url(post_url)
         
-        logger.info(f"Apify orqali URL tahlil qilinmoqda: {post_url}")
+        logger.info(f"Analyzing URL via Apify: {post_url}")
         
-        # Apify dagi rasmiy "instagram-comment-scraper" aktyori (Actor)
+        # Official Instagram comment scraper actor on Apify
         actor_id = "apify/instagram-comment-scraper"
         
-        # Aktyorga yuboriladigan ma'lumotlar
+        # Actor input payload
         run_input = {
             "directUrls": [post_url],
             "resultsLimit": self._config.max_comments,
         }
 
         try:
-            logger.info("Apify scraper ishga tushirilmoqda. Bu bir necha soniya olishi mumkin...")
+            logger.info("Starting Apify scraper. This may take a few seconds...")
             # Run the actor synchronously
             run = self.client.actor(actor_id).call(run_input=run_input)
             
-            # Natijalarni (Dataset) olish
+            # Fetch results (Dataset)
             dataset_id = run["defaultDatasetId"]
             items = list(self.client.dataset(dataset_id).iterate_items())
             
-            logger.info(f"Apify jami {len(items)} ta izoh topdi.")
+            logger.info(f"Apify found {len(items)} comments.")
             
             scraped_comments = []
             for item in items:
-                # Apify qaytargan JSON formatni o'zimizga moslash
+                # Map Apify JSON to our data model
                 scraped_comments.append(
                     ScrapedComment(
                         id=item.get("id", "unknown"),
@@ -114,22 +114,22 @@ class ApifyInstagramScraper:
             )
             
         except Exception as e:
-            logger.error(f"Apify bilan aloqada xatolik yuz berdi: {e}")
-            raise ConnectionError(f"Ma'lumot yig'ishda xatolik (Apify): {e}")
+            logger.error(f"Communication error with Apify: {e}")
+            raise ConnectionError(f"Error collecting data (Apify): {e}")
 
     @staticmethod
     def _validate_url(url: str) -> None:
-        """Instagram URL ni tekshiradi."""
+        """Validates the Instagram URL format."""
         if not _INSTAGRAM_URL_PATTERN.match(url):
             raise ValueError(
-                f"Noto'g'ri Instagram URL: {url}\n"
-                f"To'g'ri format: https://www.instagram.com/p/XXXXXX/"
+                f"Invalid Instagram URL: {url}\n"
+                f"Correct format: https://www.instagram.com/p/XXXXXX/"
             )
 
     @staticmethod
     def _extract_shortcode(url: str) -> str:
-        """URL dan post shortcode ni ajratib oladi."""
-        # https://www.instagram.com/p/ABC123/?igsh=...
+        """Extracts the post shortcode from the URL."""
+        # Example: https://www.instagram.com/p/ABC123/?igsh=...
         try:
             clean_url = url.split("?")[0].rstrip("/")
             parts = clean_url.split("/")
@@ -142,7 +142,7 @@ class ApifyInstagramScraper:
 
 def scrape_comments(config: Config, post_url: str) -> ScrapeResult:
     """
-    Tashqi foydalanish uchun qulay o'ram (wrapper).
+    Convenience wrapper for external use.
     """
     scraper = ApifyInstagramScraper(config)
     return scraper.scrape_comments(post_url)

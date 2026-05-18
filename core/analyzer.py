@@ -1,8 +1,8 @@
 """
-AI Analyzer moduli (OpenRouter API orqali).
+AI Analyzer module (Powered by OpenRouter API).
 
-Ushbu modul yig'ilgan kommentariyalarni OpenRouter API
-(masalan: Llama 3) yordamida tahlil qilib, ularni kategoriyalarga ajratadi.
+Analyzes collected comments using LLM models (e.g., Llama 3)
+via OpenRouter API and categorizes them.
 """
 
 from __future__ import annotations
@@ -19,17 +19,17 @@ from core.scraper import ScrapeResult
 
 logger = logging.getLogger(__name__)
 
-# ── Ma'lumotlar modellari (Data Models) ────────────────────────────────
+# ── Data Models ────────────────────────────────────────────────────────
 
 @dataclass
 class CategoryData:
-    """Bitta kategoriya ostidagi kommentariyalar to'plami."""
+    """Collection of comments under a specific category."""
     count: int = 0
     comments: List[str] = field(default_factory=list)
 
 @dataclass
 class AnalysisResult:
-    """AI Tahlil natijasini saqlovchi obyekt."""
+    """Container for AI analysis results."""
     summary_uz: str
     positive_percent: int
     negative_percent: int
@@ -39,16 +39,16 @@ class AnalysisResult:
     total_analyzed: int
 
 
-# ── Kategoriyalar ro'yxati ─────────────────────────────────────────────
+# ── Categories ─────────────────────────────────────────────────────────
 
 CATEGORIES = [
-    "Positive", # Ijobiy fikrlar
-    "Negative", # Salbiy fikrlar
-    "Neutral"   # Neytral, savollar, spam
+    "Positive",
+    "Negative",
+    "Neutral"
 ]
 
 
-# ── Prompt Shablon ─────────────────────────────────────────────────────
+# ── Prompt Template ────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = """
 Siz Instagram izohlari (comments) ni o'zbek tilida tahlil qiluvchi va kategoriyalarga ajratuvchi professional sun'iy intellektsiz.
@@ -80,14 +80,14 @@ JSON format nusxasi:
 
 
 def _extract_json_from_text(text: str) -> dict:
-    """LLM javobidan JSON qismini xavfsiz ajratib oladi."""
+    """Safely extracts JSON payload from the LLM response."""
     try:
-        # Eng oddiy holat: matn o'zi toza JSON bo'lsa
+        # Simplest case: raw JSON
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # Markdown bloklari (```json ... ```) orasidan qidirish
+    # Extract from Markdown blocks (```json ... ```)
     match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
     if match:
         try:
@@ -95,7 +95,7 @@ def _extract_json_from_text(text: str) -> dict:
         except json.JSONDecodeError:
             pass
             
-    # Umumiy { } qavslar orasini qidirish (Eng oxirgi chora)
+    # Fallback: Find matching braces
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
         try:
@@ -103,10 +103,10 @@ def _extract_json_from_text(text: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-    raise ValueError("LLM javobidan yaroqli JSON topilmadi.")
+    raise ValueError("Valid JSON not found in LLM response.")
 
 
-# ── Zaxira (Fallback) mexanizmi uchun lug'atlar ──────────────────────────
+# ── Fallback Analysis ──────────────────────────────────────────────────
 
 POSITIVE_WORDS = [
     "zo'r", "ajoyib", "yaxshi", "gap yo'q", "rahmat", "barakalla", "qoyil", 
@@ -121,7 +121,7 @@ NEGATIVE_WORDS = [
 ]
 
 def _fallback_analyze(scrape_result: ScrapeResult) -> AnalysisResult:
-    """API ishlamay qolganda lug'at yordamida tahlil qiladi."""
+    """Performs basic dictionary-based analysis if the API is unavailable."""
     categories_obj = {
         "Positive": CategoryData(),
         "Negative": CategoryData(),
@@ -169,32 +169,32 @@ def _fallback_analyze(scrape_result: ScrapeResult) -> AnalysisResult:
     )
 
 
-# ── Asosiy funksiya ────────────────────────────────────────────────────
+# ── Main Analysis Function ─────────────────────────────────────────────
 
 def analyze_comments(config: Config, scrape_result: ScrapeResult) -> AnalysisResult:
     """
-    OpenRouter API yordamida izohlarni tahlil qiladi.
+    Analyzes comments using the OpenRouter API.
+    Falls back to alternative models if the primary one is unavailable.
     """
     if not scrape_result.comments:
-        logger.warning("Tahlil uchun kommentariyalar yo'q.")
+        logger.warning("No comments to analyze.")
         return _empty_result(scrape_result.post_url)
 
-    logger.info(f"OpenRouter API ga {len(scrape_result.comments)} ta kommentariya yuborilmoqda (model: {config.openrouter_model})...")
+    logger.info(f"Sending {len(scrape_result.comments)} comments to OpenRouter API (model: {config.openrouter_model})...")
 
-    # OpenRouter uchun OpenAI mijozini sozlash
+    # Configure OpenAI client for OpenRouter
     client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=config.openrouter_api_key,
     )
 
-    # Izohlarni matn holatiga keltirish
+    # Format comments for the prompt
     comments_text = "\n".join(
         f"- {c.username}: {c.text}" for c in scrape_result.comments
     )
     user_prompt = f"Quyidagi izohlarni tahlil qiling va JSON formatida qaytaring:\n\n{comments_text}"
 
-    # OpenRouter API ba'zan bepul modellarga limit qo'yadi (429 Xato)
-    # Shuning uchun agar birinchi model ishlamasa, boshqa bepul modellarni sinab ko'ramiz
+    # Fallback models in case the primary free model is rate-limited
     fallback_models = [
         config.openrouter_model,
         "meta-llama/llama-3.3-70b-instruct:free",
@@ -205,9 +205,8 @@ def analyze_comments(config: Config, scrape_result: ScrapeResult) -> AnalysisRes
     ]
 
     for model_name in fallback_models:
-        logger.info(f"OpenRouter API ga {len(scrape_result.comments)} ta kommentariya yuborilmoqda (model: {model_name})...")
+        logger.info(f"Trying OpenRouter API with model: {model_name}...")
         try:
-            # OpenRouter ga so'rov yuborish
             completion = client.chat.completions.create(
                 model=model_name,
                 messages=[
@@ -218,29 +217,27 @@ def analyze_comments(config: Config, scrape_result: ScrapeResult) -> AnalysisRes
             )
             
             raw_output = completion.choices[0].message.content
-            logger.info(f"OpenRouter API dan javob muvaffaqiyatli olindi (Ishlagan model: {model_name}).")
+            logger.info(f"Successfully received response from model: {model_name}.")
             
-            # Natijani JSON formatga o'tkazish
             parsed_data = _extract_json_from_text(raw_output)
             return _build_result(parsed_data, scrape_result)
 
         except Exception as e:
-            # Agar rate limit xatosi (429) bo'lsa yoki model topilmasa (404), davom etamiz
+            # Handle rate limits or missing models by trying the next one
             if "429" in str(e) or "404" in str(e) or "rate-limited" in str(e).lower():
-                logger.warning(f"Model {model_name} band yoki o'chirilgan. Boshqasiga o'tilmoqda... Xato: {e}")
+                logger.warning(f"Model {model_name} is unavailable. Trying next... Error: {e}")
                 continue
             
-            # Agar boshqa jiddiy xato bo'lsa, to'xtatamiz
-            logger.error(f"Kutilmagan API xatosi ({model_name}): {e}")
+            logger.error(f"Unexpected API error ({model_name}): {e}")
             break
 
-    # Agar hamma modellar xato bergan bo'lsa:
-    logger.error("Barcha bepul modellar hozircha band (Rate Limited). Zaxira (fallback) tizim ishga tushirildi.")
+    # If all models fail, use fallback dictionary-based analysis
+    logger.error("All free models are currently unavailable. Using fallback analysis.")
     return _fallback_analyze(scrape_result)
 
 
 def _build_result(data: Dict[str, Any], scrape_result: ScrapeResult) -> AnalysisResult:
-    """JSON ma'lumotni AnalysisResult obyektiga o'giradi."""
+    """Parses JSON dictionary into an AnalysisResult object."""
     categories_obj = {}
     
     cats_data = data.get("categories", {})
@@ -263,7 +260,7 @@ def _build_result(data: Dict[str, Any], scrape_result: ScrapeResult) -> Analysis
 
 
 def _empty_result(post_url: str) -> AnalysisResult:
-    """Xato yuz berganda yoki izoh yo'q bo'lganda bo'sh obyekt qaytaradi."""
+    """Returns an empty result object in case of errors or zero comments."""
     return AnalysisResult(
         summary_uz="Hech qanday ma'lumot tahlil qilinmadi yoki xatolik yuz berdi.",
         positive_percent=0,

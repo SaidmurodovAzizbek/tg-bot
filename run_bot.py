@@ -1,7 +1,7 @@
 """
-Instagram Comment Analyzer — Telegram Botni ishga tushirish.
+Instagram Comment Analyzer — Telegram Bot runner.
 
-Ishlatish:
+Usage:
     source venv/bin/activate
     python run_bot.py
 """
@@ -21,13 +21,13 @@ from config import Config, display_config, load_config
 
 console = Console()
 
-# ── Logging sozlash ───────────────────────────────────────────────────
+# ── Setup Logging ───────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(name)-25s | %(levelname)-8s | %(message)s",
     datefmt="%H:%M:%S",
 )
-# Keraksiz kutubxona loglarini sokinlashtirish
+# Silence unnecessary third-party logs
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("aiohttp").setLevel(logging.WARNING)
 logging.getLogger("instagrapi").setLevel(logging.WARNING)
@@ -37,72 +37,72 @@ logger = logging.getLogger(__name__)
 
 async def start_bot(config: Config) -> None:
     """
-    Telegram botni yaratadi va polling rejimida ishga tushiradi.
+    Initializes and starts the Telegram bot in polling mode.
 
     Args:
-        config: Validatsiya qilingan loyiha konfiguratsiyasi.
+        config: Validated project configuration.
     """
-    # ── Bot va Dispatcher yaratish ────────────────────────────────────
+    # ── Initialize Bot and Dispatcher ────────────────────────────────────
     bot = Bot(
         token=config.telegram_bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
     )
     dp = Dispatcher()
 
-    # ── Config ni middleware orqali handler'larga uzatish ─────────────
+    # ── Pass config to handlers via middleware ─────────────
     dp["config"] = config
 
-    # ── Router'ni ro'yxatdan o'tkazish ────────────────────────────────
+    # ── Register Router ────────────────────────────────
     dp.include_router(router)
 
-    # ── Bot ma'lumotlarini tekshirish ─────────────────────────────────
+    # ── Check bot info ─────────────────────────────────
     bot_info = await bot.get_me()
     console.print(
         Panel(
-            f"[bold green]✅ Bot muvaffaqiyatli ulandi![/bold green]\n\n"
+            f"[bold green]✅ Bot connected successfully![/bold green]\n\n"
             f"[bold white]🤖 Bot:[/bold white]     @{bot_info.username}\n"
-            f"[bold white]📛 Nomi:[/bold white]    {bot_info.full_name}\n"
+            f"[bold white]📛 Name:[/bold white]    {bot_info.full_name}\n"
             f"[bold white]🆔 ID:[/bold white]      {bot_info.id}\n\n"
-            f"[dim]Botni to'xtatish uchun Ctrl+C bosing[/dim]",
+            f"[dim]Press Ctrl+C to stop the bot[/dim]",
             title="[bold bright_cyan]🤖 Telegram Bot",
             border_style="bright_cyan",
             padding=(1, 3),
         )
     )
 
-    # ── Polling boshlash ──────────────────────────────────────────────
-    logger.info("Polling boshlandi...")
+    # ── Start Polling ──────────────────────────────────────────────
+    logger.info("Polling started...")
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
 def main() -> None:
-    """Asosiy kirish nuqtasi."""
+    """Main entry point."""
     console.print(
         Panel(
             "[bold bright_white]🤖 Instagram Comment Analyzer[/bold bright_white]\n"
-            "[dim]Telegram Bot rejimi[/dim]",
+            "[dim]Telegram Bot Mode[/dim]",
             border_style="bright_cyan",
             padding=(1, 4),
         )
     )
 
-    # ── Konfiguratsiyani yuklash ──────────────────────────────────────
+    # ── Load Configuration ──────────────────────────────────────
     try:
         config = load_config()
     except ValueError as e:
-        console.print(f"[bold red]✗ Konfiguratsiya xatosi:[/bold red] {e}")
+        console.print(f"[bold red]✗ Configuration error:[/bold red] {e}")
         sys.exit(1)
 
     display_config(config)
 
-    # ── Botni ishga tushirish ─────────────────────────────────────────
+    # ── Start Bot ─────────────────────────────────────────
     try:
         asyncio.run(start_bot(config))
     except KeyboardInterrupt:
-        console.print("\n[bold yellow]⏹ Bot to'xtatildi.[/bold yellow]")
+        console.print("\n[bold yellow]⏹ Bot stopped.[/bold yellow]")
     except Exception as e:
-        console.print(f"[bold red]✗ Bot xatosi:[/bold red] {e}")
-        logger.exception("Bot ishga tushirishda xato")
+        console.print(f"[bold red]✗ Bot error:[/bold red] {e}")
+        logger.exception("Error starting the bot")
         sys.exit(1)
 
 

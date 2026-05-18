@@ -1,8 +1,8 @@
 """
-Instagram Comment Analyzer — Hisobot tayyorlovchi (Reporter).
+Instagram Comment Analyzer — Reporter module.
 
-Bu modul tahlil natijalarini turli formatlar (Telegram, Web, CLI)
-uchun tayyorlash funksionalligini ta'minlaydi.
+This module handles formatting analysis results for different
+interfaces (Telegram, Web, CLI).
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from core.analyzer import AnalysisResult, CategoryData
 
 logger = logging.getLogger(__name__)
 
-# ── Emoji va label mapping ────────────────────────────────────────────
+# ── Emoji and label mapping ────────────────────────────────────────────
 _CATEGORY_META = {
     "Positive": {"emoji": "🟢", "label": "Ijobiy",  "color": "green"},
     "Negative": {"emoji": "🔴", "label": "Salbiy",  "color": "red"},
@@ -26,15 +26,15 @@ _CATEGORY_META = {
 
 
 def _escape_md(text: str) -> str:
-    """Markdown uchun xavfli belgilarni tozalaydi."""
-    # Telegram MARKDOWN legacy uchun _ va * ni escape qilamiz
+    """Escapes problematic characters for Markdown."""
+    # Escape _ and * for legacy Telegram MARKDOWN
     if not isinstance(text, str):
         return str(text)
     return text.replace("_", "\\_").replace("*", "\\*").replace("[", "\\[")
 
 
 def _sentiment_bar(value: float, width: int = 20) -> str:
-    """Foiz ko'rsatkichni matnli progress bar ga aylantiradi."""
+    """Converts a percentage value into a text-based progress bar."""
     filled = int(value / 100 * width)
     empty = width - filled
     return "█" * filled + "░" * empty
@@ -46,7 +46,7 @@ def _sentiment_bar(value: float, width: int = 20) -> str:
 
 def format_for_telegram(result: AnalysisResult) -> str:
     """
-    Tahlil natijasini Telegram xabar uchun Markdown formatda tayyorlaydi.
+    Formats the analysis result as a Markdown message for Telegram.
     """
     total = result.total_analyzed
 
@@ -86,11 +86,11 @@ def format_for_telegram(result: AnalysisResult) -> str:
 
 def format_for_web(result: AnalysisResult) -> dict:
     """
-    Tahlil natijasini Web sahifa uchun dict/JSON formatda tayyorlaydi.
+    Formats the analysis result into a dictionary/JSON structure for the Web view.
     """
     total = result.total_analyzed
 
-    # ── Kategoriyalar statistikasi ────────────────────────────────────
+    # ── Category statistics ────────────────────────────────────
     categories_stats = []
     for key, meta in _CATEGORY_META.items():
         cat_data = result.categories.get(key)
@@ -106,7 +106,7 @@ def format_for_web(result: AnalysisResult) -> dict:
             "comments": cat_data.comments if cat_data else [],
         })
 
-    # ── Natija ────────────────────────────────────────────────────────
+    # ── Result payload ────────────────────────────────────────────────────────
     return {
         "post_url": result.post_url,
         "total_comments": total,
@@ -116,7 +116,7 @@ def format_for_web(result: AnalysisResult) -> dict:
             "neutral": result.neutral_percent,
         },
         "categories": categories_stats,
-        "top_topics": [], # Groq versiyasida hozircha o'chirildi
+        "top_topics": [], # Currently disabled in Groq version
         "summary": result.summary_uz,
     }
 
@@ -127,12 +127,12 @@ def format_for_web(result: AnalysisResult) -> dict:
 
 def format_for_cli(result: AnalysisResult) -> None:
     """
-    Tahlil natijasini terminal uchun rich formatda chiqaradi.
+    Prints the analysis result to the terminal using rich formatting.
     """
     console = Console()
     total = result.total_analyzed
 
-    # ── Sarlavha ──────────────────────────────────────────────────────
+    # ── Header ──────────────────────────────────────────────────────
     console.print(
         Panel(
             f"[bold bright_white]📊 Instagram Kommentariya Tahlili[/bold bright_white]\n"
@@ -169,7 +169,7 @@ def format_for_cli(result: AnalysisResult) -> None:
 
     console.print(sentiment_table)
 
-    # ── Kategoriyalar ─────────────────────────────────────────────────
+    # ── Categories ─────────────────────────────────────────────────
     console.print("\n[bold cyan]📂 Kategoriyalar:[/bold cyan]")
 
     cat_table = Table(
@@ -199,7 +199,7 @@ def format_for_cli(result: AnalysisResult) -> None:
 
     console.print(cat_table)
 
-    # ── Xulosa ────────────────────────────────────────────────────────
+    # ── Summary ────────────────────────────────────────────────────────
     console.print(
         Panel(
             f"[italic]{result.summary_uz}[/italic]",

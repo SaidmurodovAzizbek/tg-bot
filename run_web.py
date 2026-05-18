@@ -1,7 +1,7 @@
 """
-Instagram Comment Analyzer — Web Serverni ishga tushirish.
+Instagram Comment Analyzer — Web Server runner.
 
-Ishlatish:
+Usage:
     python run_web.py
 """
 
@@ -17,7 +17,7 @@ from web.app import init_app
 
 console = Console()
 
-# ── Logging sozlash ───────────────────────────────────────────────────
+# ── Setup Logging ───────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s",
@@ -27,11 +27,11 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    """Web serverni ishga tushiradi."""
+    """Starts the web server."""
     console.print(
         Panel(
             "[bold bright_white]🌐 Instagram Comment Analyzer[/bold bright_white]\n"
-            "[dim]Web Server rejimi[/dim]",
+            "[dim]Web Server Mode[/dim]",
             border_style="bright_green",
             padding=(1, 4),
         )
@@ -40,18 +40,18 @@ def main() -> None:
     try:
         config = load_config()
     except ValueError as e:
-        console.print(f"[bold red]✗ XATO:[/bold red] {e}")
+        console.print(f"[bold red]✗ ERROR:[/bold red] {e}")
         sys.exit(1)
 
-    console.print("[bold green]✓[/bold green] Konfiguratsiya yuklandi.")
+    console.print("[bold green]✓[/bold green] Configuration loaded.")
     
-    # Ilovani initsializatsiya qilish
+    # Initialize the app
     app = init_app(config)
     
-    console.print("[bold cyan]🚀 Server ishga tushirilmoqda...[/bold cyan]")
-    console.print("[dim]Brauzerda oching: http://localhost:8000[/dim]")
+    console.print("[bold cyan]🚀 Server is starting...[/bold cyan]")
+    console.print("[dim]Open in browser: http://localhost:8000[/dim]")
     
-    # Uvicorn orqali serverni yurgizish
+    # Run server via Uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
 
 

@@ -1,8 +1,8 @@
 """
-Telegram Bot — Inline klaviaturalar (Keyboards).
+Telegram Bot — Inline keyboards.
 
-Bu modul bot uchun barcha inline klaviatura tugmalarini
-yaratish funksiyalarini o'z ichiga oladi.
+This module contains functions to generate all inline keyboard
+buttons for the bot.
 """
 
 from __future__ import annotations
@@ -11,33 +11,28 @@ from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
-# ── Callback data konstantalari ───────────────────────────────────────
+# ── Callback data constants ───────────────────────────────────────
 
 class CB:
-    """Callback data konstantalari — nomlangan satrlar."""
+    """Callback data constants."""
 
-    # Asosiy harakatlar
+    # Main actions
     NEW_ANALYSIS   = "action:new"
     HELP           = "action:help"
 
-    # Kategoriyalar batafsil ko'rinishi
+    # Category details view
     CAT_POSITIVE   = "cat:Positive"
     CAT_NEGATIVE   = "cat:Negative"
     CAT_NEUTRAL    = "cat:Neutral"
 
-    # Batafsil natija
+    # Detailed results
     SHOW_DETAILS   = "action:details"
     BACK_TO_RESULT = "action:back"
 
 
 def main_result_keyboard(has_details: bool = True) -> InlineKeyboardMarkup:
     """
-    Tahlil natijasi xabari ostida ko'rsatiladigan asosiy klaviatura.
-
-    Tugmalar:
-      - 📂 Kategoriyalar batafsil
-      - 🔄 Yangi tahlil
-      - ❓ Yordam
+    Main keyboard displayed below the analysis result message.
     """
     builder = InlineKeyboardBuilder()
 
@@ -63,10 +58,10 @@ def main_result_keyboard(has_details: bool = True) -> InlineKeyboardMarkup:
 
 def categories_keyboard() -> InlineKeyboardMarkup:
     """
-    Kategoriyalar ro'yxatini ko'rsatish uchun klaviatura.
+    Keyboard for displaying the list of categories.
 
-    Foydalanuvchi ma'lum bir kategoriyani tanlab,
-    faqat o'sha kategoriya kommentariyalarini ko'rishi mumkin.
+    Allows the user to select a specific category
+    and view only its comments.
     """
     builder = InlineKeyboardBuilder()
 
@@ -79,7 +74,7 @@ def categories_keyboard() -> InlineKeyboardMarkup:
     for callback_data, text in categories:
         builder.button(text=text, callback_data=callback_data)
 
-    builder.adjust(2, 1)  # 2-1 joylashuv
+    builder.adjust(2, 1)  # 2-1 layout
 
     builder.button(text="⬅️ Orqaga", callback_data=CB.BACK_TO_RESULT)
     builder.adjust(2, 1, 1)
@@ -88,7 +83,7 @@ def categories_keyboard() -> InlineKeyboardMarkup:
 
 
 def back_keyboard() -> InlineKeyboardMarkup:
-    """Faqat 'Orqaga' tugmasini o'z ichiga olgan klaviatura."""
+    """Keyboard containing only the 'Back' button."""
     builder = InlineKeyboardBuilder()
     builder.button(text="⬅️ Natijaga qaytish", callback_data=CB.BACK_TO_RESULT)
     builder.button(text="🔄 Yangi tahlil", callback_data=CB.NEW_ANALYSIS)

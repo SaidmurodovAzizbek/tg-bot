@@ -1,7 +1,7 @@
 """
-Instagram Comment Analyzer Bot — CLI rejimi.
+Instagram Comment Analyzer Bot — CLI mode.
 
-Dasturni terminal orqali ishga tushirish uchun:
+To run the application via terminal:
     python main.py <instagram_post_url>
 """
 
@@ -16,46 +16,46 @@ console = Console()
 
 
 def main() -> None:
-    """Dasturning CLI kirish nuqtasi."""
+    """CLI entry point for the application."""
     console.print(
         Panel(
             "[bold bright_white]📊 Instagram Comment Analyzer[/bold bright_white]\n"
-            "[dim]Kommentariyalarni AI yordamida tahlil qiling[/dim]",
+            "[dim]Analyze comments using AI[/dim]",
             border_style="bright_magenta",
             padding=(1, 4),
         )
     )
 
-    # ── Konfiguratsiyani yuklash ──────────────────────────────────────
+    # ── Load Configuration ──────────────────────────────────────
     try:
         config = load_config()
     except ValueError as e:
-        console.print(f"[bold red]✗ XATO:[/bold red] {e}")
+        console.print(f"[bold red]✗ ERROR:[/bold red] {e}")
         sys.exit(1)
 
     display_config(config)
-    console.print("[bold green]✓[/bold green] Konfiguratsiya muvaffaqiyatli yuklandi!\n")
+    console.print("[bold green]✓[/bold green] Configuration loaded successfully!\n")
 
-    # ── Post URL ni tekshirish ────────────────────────────────────────
+    # ── Validate Post URL ────────────────────────────────────────
     if len(sys.argv) < 2:
         console.print(
-            "[bold yellow]⚠ Foydalanish:[/bold yellow] "
+            "[bold yellow]⚠ Usage:[/bold yellow] "
             "python main.py <instagram_post_url>\n"
-            "[dim]Misol: python main.py https://www.instagram.com/p/ABC123/[/dim]"
+            "[dim]Example: python main.py https://www.instagram.com/p/ABC123/[/dim]"
         )
         sys.exit(1)
 
     post_url = sys.argv[1]
     console.print(f"[bold cyan]🔗 Post URL:[/bold cyan] {post_url}\n")
 
-    # ── Keyingi bosqichlar uchun placeholder ──────────────────────────
+    # ── Placeholder for next steps ──────────────────────────────
     console.print(
         Panel(
-            "[dim]📌 Interfeys tanlang:\n"
+            "[dim]📌 Select an interface:\n"
             "   • python run_bot.py  → Telegram Bot\n"
-            "   • python run_web.py  → Web Sayt\n"
-            "   • python main.py URL → CLI rejimi[/dim]",
-            title="[bold]Mavjud rejimlar",
+            "   • python run_web.py  → Web Site\n"
+            "   • python main.py URL → CLI Mode[/dim]",
+            title="[bold]Available Modes",
             border_style="bright_yellow",
         )
     )

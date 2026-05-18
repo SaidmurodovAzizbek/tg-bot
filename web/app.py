@@ -1,7 +1,7 @@
 """
-Telegram Bot — Web Ilova Asosiy fayli (FastAPI).
+Telegram Bot — Web App Main File (FastAPI).
 
-Bu modul FastAPI ilovasini yaratadi va sozlaydi.
+This module creates and configures the FastAPI application.
 """
 
 from fastapi import FastAPI
@@ -12,27 +12,27 @@ import os
 from config import Config
 from web.routes import setup_routes
 
-# ── FastAPI Ilova yaratish ────────────────────────────────────────────
+# ── Create FastAPI App ────────────────────────────────────────────
 app = FastAPI(
     title="Instagram Comment Analyzer",
-    description="Instagram kommentariyalarini AI yordamida tahlil qilish",
+    description="Analyze Instagram comments using AI",
     version="1.0.0",
 )
 
-# ── Papka yo'llari ────────────────────────────────────────────────────
+# ── Directory Paths ────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 
-# ── Statik fayllarni ulash ────────────────────────────────────────────
+# ── Mount Static Files ────────────────────────────────────────────
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# ── Jinja2 Shablonlarni ulash ─────────────────────────────────────────
+# ── Setup Jinja2 Templates ─────────────────────────────────────────
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 def init_app(config: Config) -> FastAPI:
     """
-    FastAPI ilovasini konfiguratsiya bilan ishga tayyorlaydi.
+    Initializes the FastAPI application with the given configuration.
     """
     app.state.config = config
     setup_routes(app, templates)
